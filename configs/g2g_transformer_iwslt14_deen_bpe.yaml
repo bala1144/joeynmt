@@ -1,4 +1,4 @@
-name: "g2g_trans_overfit100"
+name: "g2g_trans_overfit100_remote"
 
 data:
     src: "de"                       # src language: expected suffix of train files, e.g. "train.de"

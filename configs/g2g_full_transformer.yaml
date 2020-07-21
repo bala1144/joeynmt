@@ -1,10 +1,11 @@
-name: "g2g_trans_overfit100"
+name: "g2g_reduced_transformer"
 
 data:
     src: "de"                       # src language: expected suffix of train files, e.g. "train.de"
     trg: "gloss"                       # trg language
-    train: "../dataset/Phoenx2014T_data/phoenix2014T.dev"    # training data
+    train: "../dataset/Phoenx2014T_data/phoenix2014T.train"    # training data
     dev: "../dataset/Phoenx2014T_data/phoenix2014T.dev"      # development data for validation
+    test: "../dataset/Phoenx2014T_data/phoenix2014T.test"      # development data for validation
     random_train_subset: -1         # select this many training examples randomly for training and discard the rest, -1: all
     level: "word"                   # segmentation level: either "word", "bpe" or "char"
     lowercase: False                 # lowercase the data, also for validation
@@ -24,27 +25,27 @@ testing:
 training:
     random_seed: 42
     optimizer: "adam"
-    normalization: "tokens"
+    normalization: "batch"
     adam_betas: [0.9, 0.999]
     scheduling: "plateau"
     patience: 5
     decrease_factor: 0.7
     loss: "crossentropy"
-    learning_rate: 0.003
+    learning_rate: 0.001
     learning_rate_min: 0.00000001
     weight_decay: 0.0
     label_smoothing: 0.1
-    batch_size: 128
+    batch_size: 256
     batch_type: "sentence"
     early_stopping_metric: "eval_metric"
     epochs: 10000
-    validation_freq: 10
+    validation_freq: 10 #changed to run in epoch
     logging_freq: 100
     eval_metric: "bleu"
-    model_dir: "models/g2g_transformer_overfit_dev"
+    model_dir: "models/g2g_origtrans_train_emd256"
     overwrite: True
     shuffle: True
-    use_cuda: False
+    use_cuda: True
     max_output_length: 100
     print_valid_sents: [0, 1, 2, 3, 4]
     keep_last_ckpts: 5
@@ -66,18 +67,18 @@ model:
             scale: True
             dropout: 0.
         # typically ff_size = 4 x hidden_size
-        hidden_size: 256
-        ff_size: 1024
-        dropout: 0.3
+        hidden_size: 512
+        ff_size: 2048
+        dropout: 0.1
     decoder:
         type: "transformer"
         num_layers: 6
-        num_heads: 4
+        num_heads: 8
         embeddings:
             embedding_dim: 256
             scale: True
             dropout: 0.
         # typically ff_size = 4 x hidden_size
-        hidden_size: 256
-        ff_size: 1024
-        dropout: 0.3
+        hidden_size: 512
+        ff_size: 2048
+        dropout: 0.1

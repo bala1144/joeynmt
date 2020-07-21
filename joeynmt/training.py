@@ -286,7 +286,7 @@ class TrainManager:
             train_data) % (self.batch_multiplier * self.batch_size)
 
         for epoch_no in range(self.epochs):
-            self.logger.info("EPOCH %d", epoch_no + 1)
+            self.logger.info("EPOCH %d", epoch_no)
 
             if self.scheduler is not None and self.scheduler_step_at == "epoch":
                 self.scheduler.step(epoch=epoch_no)
@@ -328,6 +328,10 @@ class TrainManager:
                 batch_loss = self._train_batch(
                     batch, update=update, count=count)
 
+                # printing batch loss for every batch
+                # self.logger.info('Batch %d: current batch loss %.2f',
+                #                  i, batch_loss)
+
                 # Only save finaly computed batch_loss of full batch
                 if update:
                     self.tb_writer.add_scalar("train/train_batch_loss",
@@ -350,102 +354,15 @@ class TrainManager:
                     elapsed_tokens = self.total_tokens - start_tokens
                     self.logger.info(
                         "Epoch %3d Step: %8d Batch Loss: %12.6f "
-                        "Tokens per Sec: %8.0f, Lr: %.6f",
-                        epoch_no + 1, self.steps, batch_loss,
+                        "Tokens per Sec: %8.0f, Lr: %.10f",
+                        epoch_no, self.steps, batch_loss,
                         elapsed_tokens / elapsed,
                         self.optimizer.param_groups[0]["lr"])
                     start = time.time()
                     total_valid_duration = 0
                     start_tokens = self.total_tokens
 
-                # validate on the entire dev set
-                if self.steps % self.validation_freq == 0 and update:
-                    valid_start_time = time.time()
-
-                    valid_score, valid_loss, valid_ppl, valid_sources, \
-                        valid_sources_raw, valid_references, valid_hypotheses, \
-                        valid_hypotheses_raw, valid_attention_scores = \
-                        validate_on_data(
-                            logger=self.logger,
-                            batch_size=self.eval_batch_size,
-                            data=valid_data,
-                            eval_metric=self.eval_metric,
-                            level=self.level, model=self.model,
-                            use_cuda=self.use_cuda,
-                            max_output_length=self.max_output_length,
-                            loss_function=self.loss,
-                            beam_size=1,  # greedy validations
-                            batch_type=self.eval_batch_type
-                        )
-
-                    self.tb_writer.add_scalar("valid/valid_loss",
-                                              valid_loss, self.steps)
-                    self.tb_writer.add_scalar("valid/valid_score",
-                                              valid_score, self.steps)
-                    self.tb_writer.add_scalar("valid/valid_ppl",
-                                              valid_ppl, self.steps)
-
-                    if self.early_stopping_metric == "loss":
-                        ckpt_score = valid_loss
-                    elif self.early_stopping_metric in ["ppl", "perplexity"]:
-                        ckpt_score = valid_ppl
-                    else:
-                        ckpt_score = valid_score
-
-                    new_best = False
-                    if self.is_best(ckpt_score):
-                        self.best_ckpt_score = ckpt_score
-                        self.best_ckpt_iteration = self.steps
-                        self.logger.info(
-                            'Hooray! New best validation result [%s]!',
-                            self.early_stopping_metric)
-                        if self.ckpt_queue.maxsize > 0:
-                            self.logger.info("Saving new checkpoint.")
-                            new_best = True
-                            self._save_checkpoint()
-
-                    if self.scheduler is not None \
-                            and self.scheduler_step_at == "validation":
-                        self.scheduler.step(ckpt_score)
-
-                    # append to validation report
-                    self._add_report(
-                        valid_score=valid_score, valid_loss=valid_loss,
-                        valid_ppl=valid_ppl, eval_metric=self.eval_metric,
-                        new_best=new_best)
-
-                    self._log_examples(
-                        sources_raw=[v for v in valid_sources_raw],
-                        sources=valid_sources,
-                        hypotheses_raw=valid_hypotheses_raw,
-                        hypotheses=valid_hypotheses,
-                        references=valid_references
-                    )
-
-                    valid_duration = time.time() - valid_start_time
-                    total_valid_duration += valid_duration
-                    self.logger.info(
-                        'Validation result (greedy) at epoch %3d, '
-                        'step %8d: %s: %6.2f, loss: %8.4f, ppl: %8.4f, '
-                        'duration: %.4fs', epoch_no + 1, self.steps,
-                        self.eval_metric, valid_score, valid_loss,
-                        valid_ppl, valid_duration)
-
-                    # store validation set outputs
-                    self._store_outputs(valid_hypotheses)
-
-                    # store attention plots for selected valid sentences
-                    if valid_attention_scores:
-                        store_attention_plots(
-                            attentions=valid_attention_scores,
-                            targets=valid_hypotheses_raw,
-                            sources=[s for s in valid_data.src],
-                            indices=self.log_valid_sents,
-                            output_prefix="{}/att.{}".format(
-                                self.model_dir, self.steps),
-                            tb_writer=self.tb_writer, steps=self.steps)
-
-                if self.stop:
+            if self.stop:
                     break
             if self.stop:
                 self.logger.info(
@@ -454,13 +371,115 @@ class TrainManager:
                 break
 
             self.logger.info('Epoch %3d: total training loss %.2f',
-                             epoch_no + 1, epoch_loss)
+                             epoch_no, epoch_loss)
+
+            # validate on the entire dev set
+            # changed to run with repesct to epoch
+            if epoch_no % self.validation_freq == 0 and update:
+                valid_start_time = time.time()
+
+                valid_score, valid_loss, valid_ppl, valid_sources, \
+                valid_sources_raw, valid_references, valid_hypotheses, \
+                valid_hypotheses_raw, valid_attention_scores = \
+                    validate_on_data(
+                        logger=self.logger,
+                        batch_size=self.eval_batch_size,
+                        data=valid_data,
+                        eval_metric=self.eval_metric,
+                        level=self.level, model=self.model,
+                        use_cuda=self.use_cuda,
+                        max_output_length=self.max_output_length,
+                        loss_function=self.loss,
+                        beam_size=1,  # greedy validations
+                        batch_type=self.eval_batch_type
+                    )
+
+                self.tb_writer.add_scalar("valid/valid_loss",
+                                          valid_loss, epoch_no)
+                self.tb_writer.add_scalar("valid/valid_score",
+                                          valid_score, epoch_no)
+                self.tb_writer.add_scalar("valid/valid_ppl",
+                                          valid_ppl, epoch_no)
+
+                if self.early_stopping_metric == "loss":
+                    ckpt_score = valid_loss
+                elif self.early_stopping_metric in ["ppl", "perplexity"]:
+                    ckpt_score = valid_ppl
+                else:
+                    ckpt_score = valid_score
+
+                new_best = False
+                if self.is_best(ckpt_score):
+                    self.best_ckpt_score = ckpt_score
+                    self.best_ckpt_iteration = self.steps
+                    self.logger.info(
+                        'Hooray! New best validation result [%s]!',
+                        self.early_stopping_metric)
+                    if self.ckpt_queue.maxsize > 0:
+                        self.logger.info("Saving new checkpoint.")
+                        new_best = True
+                        self._save_checkpoint()
+
+                if self.scheduler is not None \
+                        and self.scheduler_step_at == "validation":
+                    self.scheduler.step(ckpt_score)
+
+                # append to validation report
+                self._add_report(
+                    valid_score=valid_score, valid_loss=valid_loss,
+                    valid_ppl=valid_ppl, eval_metric=self.eval_metric,
+                    new_best=new_best)
+
+                self._log_examples(
+                    sources_raw=[v for v in valid_sources_raw],
+                    sources=valid_sources,
+                    hypotheses_raw=valid_hypotheses_raw,
+                    hypotheses=valid_hypotheses,
+                    references=valid_references
+                )
+
+                valid_duration = time.time() - valid_start_time
+                total_valid_duration += valid_duration
+                self.logger.info(
+                    'Validation result (greedy) at epoch %3d, '
+                    'step %8d: %s: %6.2f, loss: %8.4f, ppl: %8.4f, '
+                    'duration: %.4fs', epoch_no + 1, self.steps,
+                    self.eval_metric, valid_score, valid_loss,
+                    valid_ppl, valid_duration)
+
+                # store validation set outputs
+                self._store_outputs(valid_hypotheses)
+
+                # store attention plots for selected valid sentences
+                if valid_attention_scores:
+                    store_attention_plots(
+                        attentions=valid_attention_scores,
+                        targets=valid_hypotheses_raw,
+                        sources=[s for s in valid_data.src],
+                        indices=self.log_valid_sents,
+                        output_prefix="{}/att.{}".format(
+                            self.model_dir, self.steps),
+                        tb_writer=self.tb_writer, steps=self.steps)
+
+            # add the epoch loss every epoch
+            if update:
+                self.tb_writer.add_scalar("train/train_epoch_loss",
+                                          epoch_loss, epoch_no)
+
+            # plot the learning rate
+            if update:
+                self.tb_writer.add_scalar("train/LearningRate",
+                                          self.optimizer.param_groups[0]["lr"], epoch_no)
+
         else:
-            self.logger.info('Training ended after %3d epochs.', epoch_no + 1)
+            self.logger.info('Training ended after %3d epochs.', epoch_no )
+
+
         self.logger.info('Best validation result (greedy) at step '
                          '%8d: %6.2f %s.', self.best_ckpt_iteration,
                          self.best_ckpt_score,
                          self.early_stopping_metric)
+
 
         self.tb_writer.close()  # close Tensorboard writer
 

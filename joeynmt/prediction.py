@@ -96,7 +96,7 @@ def validate_on_data(model: Model, data: Dataset,
             if loss_function is not None and batch.trg is not None:
                 batch_loss = model.get_loss_for_batch(
                     batch, loss_function=loss_function)
-                total_loss += batch_loss
+                total_loss += batch_loss / batch.nseqs
                 total_ntokens += batch.ntokens
                 total_nseqs += batch.nseqs
 
